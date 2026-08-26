@@ -97,8 +97,8 @@ the same qpair, is safe but offers no throughput benefit over a single-threaded 
 parallel I/O, allocate multiple qpairs via ``QPAIR_ADD`` and distribute transfers across them.
 
 Hotplug ioctls from multiple processes serialize on ``pci_lock_rescan_remove()``.
-``TOGGLE_SBR`` drops this lock before calling ``pci_bridge_secondary_bus_reset()`` to avoid
-deadlock with the PCI slot lock.
+``TOGGLE_SBR`` retains this lock until the V80 has reloaded and the PCIe link is stable. On a
+hotplug-capable bridge it also suppresses expected pciehp link events during that interval.
 
 Card information and BARs: ``/dev/slash_ctl<N>``
 ================================================
@@ -937,25 +937,23 @@ Usage
 Full FPGA Reconfiguration (with secondary bus reset)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For a complete reconfiguration where the FPGA is fully reset, remove both PFs, assert a secondary bus
-reset, wait for FPGA re-initialization, then rescan:
+For a complete reconfiguration where the FPGA is fully reset, remove every PF, assert a
+secondary bus reset, wait for the ioctl to report a stable link, then rescan:
 
 .. code-block:: c
 
     struct slash_hotplug_device_request req = { .size = sizeof(req) };
 
-    /* Remove both PFs */
-    snprintf(req.bdf, sizeof(req.bdf), "0000:61:00.1");
-    ioctl(hp_fd, SLASH_HOTPLUG_IOCTL_REMOVE, &req);
-    snprintf(req.bdf, sizeof(req.bdf), "0000:61:00.2");
-    ioctl(hp_fd, SLASH_HOTPLUG_IOCTL_REMOVE, &req);
+    /* Includes PF3 on newer shells; absent functions return ENODEV. */
+    for (int pf = 0; pf < 8; pf++) {
+        snprintf(req.bdf, sizeof(req.bdf), "0000:61:00.%d", pf);
+        if (ioctl(hp_fd, SLASH_HOTPLUG_IOCTL_REMOVE, &req) < 0 && errno != ENODEV)
+            return -1;
+    }
 
-    /* Assert SBR (blocks ~1 s internally for link retraining) */
+    /* Assert SBR; blocks until PDI reload and link training complete */
     snprintf(req.bdf, sizeof(req.bdf), "0000:61:00.0");  /* bus matters, not function digit */
     ioctl(hp_fd, SLASH_HOTPLUG_IOCTL_TOGGLE_SBR, &req);
-
-    /* Wait for FPGA re-initialization — caller responsibility */
-    sleep(7);  /* 5–10 s recommended */
 
     /* Rescan all root buses */
     ioctl(hp_fd, SLASH_HOTPLUG_IOCTL_RESCAN, NULL);
@@ -1065,9 +1063,10 @@ callback. The corresponding ``/dev/slash_ctl<N>`` or ``/dev/slash_qdma_ctl<N>`` 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Asserts a secondary bus reset (SBR) on the upstream PCIe bridge for the bus specified by BDF,
-performing a full hardware reset of all endpoints on that bus. The ioctl blocks for approximately
-1000 ms internally for PCIe link retraining; userspace should wait an **additional 5–10 seconds**
-after the call returns before rescanning.
+performing a full hardware reset of all endpoints on that bus. The ioctl suppresses pciehp link
+events while the V80 reloads, waits five seconds for PDI initialization, and then waits up to
+another 25 seconds for DLL Link Active to remain asserted across two 100 ms polls. Userspace can
+rescan immediately after the ioctl succeeds.
 
 **Interface:**
 
@@ -1082,22 +1081,25 @@ after the call returns before rescanning.
 - ``size`` must cover the ``bdf`` field — otherwise ``-EINVAL``
 - ``bdf`` must be a valid ``DDDD:BB:SS.F`` string; only the domain and bus number are used to
   locate the upstream bridge
-- The endpoint device may have been removed before calling; the kernel resolves the bridge via the
-  bus number, which persists after endpoint removal
+- Every endpoint function on the secondary bus must already be removed; otherwise the ioctl
+  returns ``-EBUSY``
+- The kernel resolves the bridge via the bus number, which persists after endpoint removal
 
 **Postconditions:**
 
-- Bridge config space is saved, ``PCI_BRIDGE_CTL_BUS_RESET`` is asserted for at least 2 ms,
-  deasserted, and config space is restored.
-- The ioctl sleeps 1000 ms for PCIe link retraining before returning.
-- The PCIe link is retrained; the FPGA may still be initializing after return.
+- ``PCI_BRIDGE_CTL_BUS_RESET`` is asserted and deasserted by the PCI core.
+- Expected pciehp link-change events are ignored until V80 PDI reload and link recovery complete.
+- When DLL Link Active reporting is available, the link has remained active for at least 100 ms.
 
 **Return values:**
 
-- ``0`` — success (after 1000 ms delay)
+- ``0`` — PDI reload delay completed and, when reportable, the link is stable
 - ``-EFAULT`` — copy failure
 - ``-EINVAL`` — malformed BDF or request ``size`` too small
 - ``-ENODEV`` — no upstream bridge found for the specified bus
+- ``-EBUSY`` — endpoint functions remain on the secondary bus, or the bridge is locked
+- ``-EIO`` — upstream bridge link status could not be read
+- ``-ETIMEDOUT`` — DLL Link Active did not stabilize within 25 seconds after PDI settling
 
 ``SLASH_HOTPLUG_IOCTL_HOTPLUG``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

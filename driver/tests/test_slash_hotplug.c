@@ -36,7 +36,6 @@
 #include <stdio.h>
 
 #define NODE_RECOVERY_TIMEOUT_S 10
-#define SBR_SETTLE_SECONDS 7
 
 /* ====================================================================
  * Accelerator discovery + verification
@@ -617,6 +616,13 @@ TEST_F(hotplug, toggle_sbr_no_upstream_bridge)
 						   "ffff:ff:00.0"));
 }
 
+TEST_F(hotplug, toggle_sbr_rejects_live_bus)
+{
+	EXPECT_EQ(-EBUSY,
+			  hp_ioctl_bdf(self->hp_fd, SLASH_HOTPLUG_IOCTL_TOGGLE_SBR,
+						   self->accels[0].pf0_bdf));
+}
+
 /* ====================================================================
  * ABI size-versioning tests
  *
@@ -664,18 +670,22 @@ TEST_F(hotplug, hotplug_size_below_struct_returns_einval)
 TEST_F(hotplug, full_sbr_cycle)
 {
 	if (getenv("SLASH_TEST_DESTRUCTIVE") == NULL)
-		SKIP(return, "full board reset (~10 s); "
+		SKIP(return, "full board reset (may take up to 30 s); "
 					 "set SLASH_TEST_DESTRUCTIVE=1 to run");
 
-	ASSERT_EQ(0, hp_ioctl_bdf(self->hp_fd, SLASH_HOTPLUG_IOCTL_REMOVE,
-							  self->accels[0].pf1_bdf));
-	ASSERT_EQ(0, hp_ioctl_bdf(self->hp_fd, SLASH_HOTPLUG_IOCTL_REMOVE,
-							  self->accels[0].pf2_bdf));
+	/* PF3 is present on newer shells; absent functions are harmless. */
+	for (int function = 0; function < 8; function++) {
+		char bdf[SLASH_PCI_BDF_LEN];
+		int ret;
+
+		memcpy(bdf, self->accels[0].pf0_bdf, sizeof(bdf));
+		bdf[11] = '0' + function;
+		ret = hp_ioctl_bdf(self->hp_fd, SLASH_HOTPLUG_IOCTL_REMOVE, bdf);
+		ASSERT_TRUE(ret == 0 || ret == -ENODEV);
+	}
 
 	ASSERT_EQ(0, hp_ioctl_bdf(self->hp_fd, SLASH_HOTPLUG_IOCTL_TOGGLE_SBR,
 							  self->accels[0].pf0_bdf));
-
-	sleep(SBR_SETTLE_SECONDS);
 
 	ASSERT_EQ(0, ioctl(self->hp_fd, SLASH_HOTPLUG_IOCTL_RESCAN));
 

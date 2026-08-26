@@ -34,5 +34,14 @@ add_vrtd_test(design_writer_test design_writer_test.cpp)
 add_vrtd_test(device_test device_test.cpp)
 add_vrtd_test(flash_worker_test flash_worker_test.cpp)
 add_vrtd_test(reset_test reset_test.cpp)
+add_vrtd_test(reset_io_test reset_io_test.cpp)
+# Exercise reset readiness/removal without touching PCI devices or /dev.
+foreach(symbol IN ITEMS
+    slash_ctldev_open slash_ctldev_close
+    slash_device_info_read slash_device_info_free
+    slash_qdma_open slash_qdma_close slash_qdma_info_read
+    slash_hotplug_remove)
+  target_link_options(reset_io_test PRIVATE "-Wl,--wrap=${symbol}")
+endforeach()
 add_vrtd_test(clock_test clock_test.cpp)
 add_vrtd_test(shell_build_id_test shell_build_id_test.cpp)

@@ -116,4 +116,11 @@ DECLARE_OWNING_PTR_ARRAY(device_ptr_array, struct device *, cleanup_device);
  */
 int devices_discover_and_open(struct device_ptr_array *devices);
 
+/**
+ * Check that the stable control node and its paired QDMA node can be opened
+ * and still identify the requested board. No BARs or DMA queues are created.
+ * Returns false while driver probing or udev permissions are incomplete.
+ */
+bool device_nodes_ready(const char *ctl_path, const char *bdf);
+
 #endif // VRTD_DEVICE_H

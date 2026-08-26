@@ -32,6 +32,11 @@ void hotplug_global_destroy(void);
 
 uint16_t hotplug_errno_to_vrtd_ret(int err);
 
+/* Remove every conventional PCI function at this board's slot (PF0..PF7).
+ * Missing functions are expected; other errors stop removal and preserve errno.
+ * Returns 0 on success, -1 on failure. */
+int hotplug_remove_board(const char *bdf);
+
 // Helper function but useful and generally used with hotplug
 int pci_bdf_set_function(const char *bdf, uint8_t func, char out_bdf[VRTD_PCI_BDF_LEN]);
 

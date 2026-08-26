@@ -68,6 +68,29 @@ void hotplug_global_destroy(void)
     g_hotplug = NULL;
 }
 
+int hotplug_remove_board(const char *bdf)
+{
+    if (g_hotplug == NULL) {
+        errno = ENODEV;
+        return -1;
+    }
+
+    /* Newer shells also expose PF3. Attempt all conventional function
+     * numbers so absent/older functions need no special-case discovery. */
+    for (uint8_t function = 0; function < 8; function++) {
+        char pf_bdf[VRTD_PCI_BDF_LEN] = {0};
+        if (pci_bdf_set_function(bdf, function, pf_bdf) != 0)
+            return -1;
+        if (slash_hotplug_remove(g_hotplug, pf_bdf) != 0 && errno != ENODEV) {
+            int saved_errno = errno;
+            LOG(LOG_ERR, "Failed to remove PCI function %s: %m", pf_bdf);
+            errno = saved_errno;
+            return -1;
+        }
+    }
+    return 0;
+}
+
 /**
  * Translate a POSIX errno from the hotplug subsystem into a vrtd wire
  * protocol return code.  This keeps the errno-to-wire mapping in one

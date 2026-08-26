@@ -109,6 +109,46 @@ static int open_paired_qdma(const char *ctl_path, struct slash_qdma **out)
     return 0;
 }
 
+bool device_nodes_ready(const char *ctl_path, const char *bdf)
+{
+    struct slash_ctldev *ctl = NULL;
+    struct slash_qdma *qdma = NULL;
+    struct slash_ioctl_device_info *ctl_info = NULL;
+    struct slash_qdma_info qdma_info = {0};
+    char pf1_bdf[VRTD_PCI_BDF_LEN] = {0};
+    char pf2_bdf[VRTD_PCI_BDF_LEN] = {0};
+    bool ready = false;
+
+    if (ctl_path == NULL
+        || pci_bdf_set_function(bdf, 1, pf1_bdf) != 0
+        || pci_bdf_set_function(bdf, 2, pf2_bdf) != 0) {
+        return false;
+    }
+
+    ctl = slash_ctldev_open(ctl_path);
+    if (ctl == NULL)
+        goto out;
+    ctl_info = slash_device_info_read(ctl);
+    if (ctl_info == NULL
+        || strncmp(ctl_info->bdf, pf2_bdf, sizeof(ctl_info->bdf)) != 0) {
+        goto out;
+    }
+
+    if (open_paired_qdma(ctl_path, &qdma) != 0 || qdma == NULL)
+        goto out;
+    if (slash_qdma_info_read(qdma, &qdma_info) != 0)
+        goto out;
+
+    ready = strncmp(qdma_info.bdf, pf1_bdf, sizeof(qdma_info.bdf)) == 0;
+out:
+    if (qdma != NULL)
+        slash_qdma_close(qdma);
+    slash_device_info_free(ctl_info);
+    if (ctl != NULL)
+        slash_ctldev_close(ctl);
+    return ready;
+}
+
 /**
  * Discover all SLASH control devices and open them.
  *
