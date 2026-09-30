@@ -37,7 +37,6 @@ VERSION="$(tr -d '[:space:]' < packaging/version)"
 
 export ARTIFACTS_DIR="${ARTIFACTS_DIR:-"$(pwd)"/deb}"
 export DPKG_ARCH="$(dpkg --print-architecture)"
-export DPKG_PARSED_VERSION="$(dpkg-parsechangelog -SVersion)"
 
 # Warn before overwriting an existing build
 if [[ -d "${ARTIFACTS_DIR}" ]] && [[ -t 0 ]] && [[ "${NONINTERACTIVE}" -eq 0 ]]; then
@@ -109,6 +108,11 @@ rm -rf debian
 rsync -a packaging/debian/ ./debian/
 
 sed -i "1s/(UNRELEASED) UNRELEASED;/(${VERSION}) unstable;/" debian/changelog
+
+# Parse the staged changelog after setting its version. A fresh checkout has
+# no debian/changelog, and a reused checkout may still contain an old version.
+DPKG_PARSED_VERSION="$(dpkg-parsechangelog -SVersion)"
+export DPKG_PARSED_VERSION
 
 # Substitute the packaging version into DKMS metadata files.
 sed -i "s/@VERSION@/${VERSION}/g" \

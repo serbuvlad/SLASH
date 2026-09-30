@@ -190,10 +190,11 @@ if [[ "$NO_RESET" -eq 1 ]]; then
     NUM_ACTIONS=${#ACTION_NAMES[@]}
 fi
 
-if [[ ! -x "$V80_SMI" ]]; then
+if ! resolved_v80_smi=$(command -v "$V80_SMI") || [[ ! -x "$resolved_v80_smi" ]]; then
     echo "ERROR: v80-smi executable not found or not executable: $V80_SMI"
     exit 1
 fi
+V80_SMI="$resolved_v80_smi"
 
 # =========================================================================
 #  Pre-flight checks
@@ -228,7 +229,7 @@ done
 if [[ $MISSING -ne 0 ]]; then
     echo ""
     echo "Pre-built vbins and executables are required. Build them first:"
-    echo "  ./scripts/test-examples.sh --use-repo hw $BDF"
+    echo "  ./scripts/test-examples.sh hw $BDF"
     exit 1
 fi
 

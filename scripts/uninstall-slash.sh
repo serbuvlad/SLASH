@@ -212,10 +212,9 @@ if [[ "${DO_RUNTIME}" -eq 1 ]]; then
         echo "  and re-run with --device <BDF>, e.g. --device 0000:21:00."
     else
         for bdf in "${NORMALISED[@]}"; do
-            # A V80 presents three functions. Removing them individually through sysfs
-            # rather than via `v80-smi debug hotplug-op` is deliberate: that command
-            # talks to vrtd, which step 1 has just stopped.
-            for fn in 0 1 2; do
+            # Remove every function, including PF3 on newer shells. Use sysfs
+            # because vrtd, which handles v80-smi hotplug commands, is stopped.
+            for fn in 0 1 2 3 4 5 6 7; do
                 dev="/sys/bus/pci/devices/${bdf}.${fn}"
                 if [[ -e "${dev}/remove" ]]; then
                     run_write 1 "${dev}/remove"
