@@ -312,6 +312,32 @@ Pass ``--noninteractive`` to suppress the confirmation prompt shown when an
 existing build is about to be overwritten. This is required when the build is
 run detached, and is what continuous integration uses.
 
+To build the standard hardware test examples in the same run, without a board
+or an installed SLASH stack, chain the existing example script after packaging:
+
+.. code-block:: bash
+
+   bash scripts/package-deb.sh --noninteractive && \
+     bash scripts/test-examples.sh --build-only --use-repo hw
+
+This builds the HLS kernels, hardware ``.vbin`` files, and host applications for
+examples ``00_axilite``, ``01_aximm``, ``02_chain``, and ``04_freq``. It uses the
+repository libraries and static shells just built by packaging. The example
+artifacts remain in each ``examples/<name>/build/`` directory; they are not
+added to the ``.deb`` packages. No tests are run by ``--build-only``.
+
+After installing the packages on the test machine, run the example script
+without ``--use-repo`` to relink the host applications against the installed
+libraries and execute the tests:
+
+.. code-block:: bash
+
+   bash scripts/test-examples.sh hw "$BDF"
+
+This configure/build/test step still requires the AMD tools. The existing
+``scripts/stress-test.sh "$BDF"`` can then reuse the built artifacts for repeated
+hardware testing.
+
 .. note::
 
    ``dpkg-buildpackage`` writes the ``.dsc`` and source tarball to the
