@@ -28,28 +28,31 @@ EXAMPLES_DIR="$REPO_ROOT/examples"
 
 SANITIZE=false
 USE_REPO=false
+BUILD_ONLY=false
 
 usage() {
-    echo "Usage: $0 [--sanitize] [--use-repo] <hw|sim|emu> [BDF]"
+    echo "Usage: $0 [--sanitize] [--use-repo] [--build-only] <hw|sim|emu> [BDF]"
     echo ""
     echo "  Build and run examples 0, 1, 2, and 4 for the specified platform."
     echo ""
     echo "  Options:"
     echo "    --sanitize   Build with AddressSanitizer and UBSan"
     echo "    --use-repo   Build examples against this repository instead of installed packages"
+    echo "    --build-only Build HLS kernels, VBINs, and host applications without running tests"
     echo ""
     echo "  Arguments:"
     echo "    hw|sim|emu   Target platform (hardware, simulation, or emulation)"
-    echo "    BDF          Device BDF (optional, auto-detected via v80-smi if omitted)"
+    echo "    BDF          Device BDF (auto-detected if omitted; unused with --build-only)"
     echo ""
     exit 1
 }
 
-# Parse --sanitize flag
+# Parse options
 while [[ $# -gt 0 && "$1" == --* ]]; do
     case "$1" in
         --sanitize) SANITIZE=true; shift ;;
         --use-repo) USE_REPO=true; shift ;;
+        --build-only) BUILD_ONLY=true; shift ;;
         *) echo "ERROR: Unknown option '$1'"; usage ;;
     esac
 done
@@ -71,7 +74,13 @@ if [[ "$USE_REPO" == true ]]; then
     echo "=== Building examples against repository sources ==="
     CMAKE_EXTRA_ARGS+=(
         -DSLASH_USE_REPO=ON
+        -DVRT_INCLUDE_VRTD=ON
+        -DVRTD_INCLUDE_LIBSLASH=ON
     )
+else
+    # Override a cached ON from an earlier --use-repo build so package tests
+    # link their host applications against the installed runtime libraries.
+    CMAKE_EXTRA_ARGS+=(-DSLASH_USE_REPO=OFF)
 fi
 if [[ "$SANITIZE" == true ]]; then
     echo "=== AddressSanitizer + UBSan ENABLED ==="
@@ -84,8 +93,10 @@ if [[ "$SANITIZE" == true ]]; then
     )
 fi
 
-# Determine BDF (only required for hw)
-if [[ $# -ge 2 ]]; then
+# Determine BDF only when running tests; a build machine needs no board or v80-smi.
+if [[ "$BUILD_ONLY" == true ]]; then
+    BDF=""
+elif [[ $# -ge 2 ]]; then
     BDF="$2"
 else
     echo "=== Auto-detecting BDF via v80-smi ==="
@@ -183,6 +194,12 @@ for entry in "${EXAMPLES[@]}"; do
     cmake --build "$BUILD_DIR" --target "$executable"
     echo ""
 done
+
+if [[ "$BUILD_ONLY" == true ]]; then
+    echo "Build complete: examples 00, 01, 02, and 04 ($PLATFORM)."
+    echo "VBINs and host applications are in each example's build directory."
+    exit 0
+fi
 
 # =========================================================================
 #  Stage 5: Run all examples
