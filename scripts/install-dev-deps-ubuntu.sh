@@ -32,15 +32,21 @@ apt-get install -y \
     pkg-config \
     rsync \
     git \
+    jq \
     dkms \
     python3 \
     python3-pip \
+    python3-jinja2 \
+    python3-setuptools \
+    python3-wheel \
+    python3-venv \
     libcli11-dev \
     libinih-dev \
     libjsoncpp-dev \
     libsystemd-dev \
     libxml2-dev \
     libzmq3-dev \
+    cppzmq-dev \
     zlib1g-dev
 
 # dh-dkms: split out of dkms on Ubuntu 24.04+; needed for debhelper DKMS
@@ -64,7 +70,6 @@ apt-get install -y \
     libfdt-dev \
     device-tree-compiler \
     meson \
-    python3-venv \
     gcc-arm-none-eabi
 
 # ---------------------------------------------------------------------------
